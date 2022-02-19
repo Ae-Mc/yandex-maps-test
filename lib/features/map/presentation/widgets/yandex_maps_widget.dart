@@ -1,7 +1,9 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:get_it/get_it.dart';
-import 'package:logger/logger.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import 'package:yandex_maps_test/app/router/app_router.gr.dart';
 import 'package:yandex_maps_test/features/map/domain/entities/place.dart';
@@ -73,11 +75,12 @@ class _YandexMapsWidgetState extends State<YandexMapsWidget> {
       ),
       onMapCreated: (controller) => mapController = controller,
       mapObjects: mapObjects,
-      onCameraPositionChanged: (position, reason, __) {
+      onCameraPositionChanged: (position, reason, __) async {
         final level = getLevelFromZoom(position.zoom);
         if (level != activeLevel) {
           activeLevel = level;
-          setState(updateMapObjects);
+          await updateMapObjects();
+          setState(() => {});
         }
       },
     );
@@ -92,34 +95,47 @@ class _YandexMapsWidgetState extends State<YandexMapsWidget> {
     throw RangeError('Uncovered zoom level: $zoom');
   }
 
-  void updateMapObjects() {
+  Future<void> updateMapObjects() async {
     final collections = clustersBuilder.getCollectionsOnLevel(activeLevel);
     int clusterId = 0;
     int placeId = 0;
-    mapObjects = collections
-        .map<MapObject>((collection) => ((collection.length == 1)
-            ? Placemark(
-                mapId: MapObjectId('placemark_${placeId++}'),
-                point: collection[0].point,
-                onTap: (_, __) {
-                  GetIt.I<AppRouter>().push(PlaceRoute(place: collection[0]));
-                },
-                opacity: 1,
-                icon: PlacemarkIcon.single(
-                  PlacemarkIconStyle(
-                    image: BitmapDescriptor.fromAssetImage(
-                        'assets/icons/place.png'),
+    mapObjects = [];
+    for (final collection in collections) {
+      mapObjects.add((collection.length == 1)
+          ? Placemark(
+              mapId: MapObjectId('placemark_${placeId++}'),
+              point: collection[0].point,
+              onTap: (_, __) {
+                GetIt.I<AppRouter>().push(PlaceRoute(place: collection[0]));
+              },
+              opacity: 1,
+              icon: PlacemarkIcon.single(
+                PlacemarkIconStyle(
+                  image: BitmapDescriptor.fromBytes(
+                    await marksBuilder.buildPlacemarkImage(
+                      await getImageFromUrl(
+                        'https://ae-mc.ru/files/images/linux.png',
+                      ),
+                    ),
                   ),
                 ),
-              )
-            : collectionToClusterizedPlacemarkCollection(
-                'cluster_${clusterId++}',
-                collection,
-              )) as MapObject)
-        .toList();
+              ),
+            )
+          : collectionToClusterizedPlacemarkCollection(
+              'cluster_${clusterId++}',
+              collection,
+            ) as MapObject);
+    }
+  }
 
-    GetIt.I<Logger>().d('Active level: $activeLevel');
-    GetIt.I<Logger>().d(collections);
+  Future<ui.ImageDescriptor> getImageFromUrl(String url) async {
+    final response = await Dio().get<Uint8List>(url,
+        options: Options(responseType: ResponseType.bytes));
+    return ui.ImageDescriptor.encoded(
+      await ui.ImmutableBuffer.fromUint8List(
+        response.data!,
+      ),
+    );
   }
 
   ClusterizedPlacemarkCollection collectionToClusterizedPlacemarkCollection(

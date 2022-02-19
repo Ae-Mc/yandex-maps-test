@@ -48,14 +48,28 @@ class MapMarksBuilder {
     return pngBytes!.buffer.asUint8List();
   }
 
-  /// [avatarImage] must has size 200x200
-  Future<Uint8List> buildPlacemarkImage(Image avatarImage) async {
+  /// [avatarImage] must has size 150x150
+  Future<Uint8List> buildPlacemarkImage(ImageDescriptor avatarImage) async {
     final recorder = PictureRecorder();
     final canvas = Canvas(recorder);
     final imagePaint = Paint();
-    canvas.drawImage(avatarImage, Offset.zero, imagePaint);
-    canvas.clipRRect(RRect.fromLTRBR(0, 0, 0, 0, const Radius.circular(100)));
-    final image = await recorder.endRecording().toImage(200, 200);
-    return (await image.toByteData())!.buffer.asUint8List();
+    canvas.drawCircle(
+      const Offset(50, 50),
+      50,
+      Paint()..color = AppTheme.of(context).colorTheme.primary,
+    );
+    canvas.drawImage(
+      (await (await avatarImage.instantiateCodec(
+                  targetHeight: 100, targetWidth: 100))
+              .getNextFrame())
+          .image,
+      const Offset(0, 0),
+      imagePaint,
+    );
+    canvas.clipRRect(RRect.fromLTRBR(0, 0, 0, 0, const Radius.circular(50)));
+    final image = await recorder.endRecording().toImage(100, 100);
+    return (await image.toByteData(format: ImageByteFormat.png))!
+        .buffer
+        .asUint8List();
   }
 }
